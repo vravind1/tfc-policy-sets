@@ -1,0 +1,38 @@
+# require-resource-tags.sentinel
+#
+# ENFORCEMENT: soft-mandatory (can be overridden with a comment)
+# PURPOSE: All AWS resources must have the required tags: Environment and ManagedBy.
+#          Enables cost allocation and ownership tracking across the org.
+
+import "tfplan/v2" as tfplan
+
+required_tags = ["Environment", "ManagedBy"]
+
+# Get all resource changes that are creates or updates
+all_resources = filter tfplan.resource_changes as _, rc {
+  rc.change.actions contains "create" or
+  rc.change.actions contains "update"
+}
+
+# Only check resources that support tags (AWS resources generally do)
+aws_resources = filter all_resources as _, rc {
+  rc.provider_name contains "aws"
+}
+
+# Check that each resource has all required tags
+resources_have_required_tags = rule {
+  all aws_resources as _, resource {
+    # Skip resources that don't have a tags field (e.g. IAM policies)
+    resource.change.after is not null and
+    (
+      resource.change.after["tags"] is null or
+      all required_tags as tag {
+        tag in keys(resource.change.after["tags"] else {})
+      }
+    )
+  }
+}
+
+main = rule {
+  resources_have_required_tags
+}
