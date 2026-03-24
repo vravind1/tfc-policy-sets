@@ -1,0 +1,35 @@
+# require-s3-versioning.sentinel
+#
+# ENFORCEMENT: hard-mandatory
+# PURPOSE: All S3 buckets must have versioning enabled.
+#          Prevents accidental data loss and supports compliance requirements.
+# DEMO TIP: Set enable_versioning = false in the workspace to trigger a failure.
+
+import "tfplan/v2" as tfplan
+
+# Get all planned S3 bucket versioning resources
+all_s3_versioning = filter tfplan.resource_changes as _, rc {
+  rc.type is "aws_s3_bucket_versioning" and
+  (rc.change.actions contains "create" or rc.change.actions contains "update")
+}
+
+# Check that every versioning resource has status = "Enabled"
+all_versioning_enabled = rule {
+  all all_s3_versioning as _, resource {
+    resource.change.after.versioning_configuration[0].status is "Enabled"
+  }
+}
+
+# Also check that every S3 bucket has a corresponding versioning resource
+all_s3_buckets = filter tfplan.resource_changes as _, rc {
+  rc.type is "aws_s3_bucket" and
+  (rc.change.actions contains "create" or rc.change.actions contains "update")
+}
+
+buckets_have_versioning_resource = rule {
+  length(all_s3_buckets) == 0 or length(all_s3_versioning) >= length(all_s3_buckets)
+}
+
+main = rule {
+  all_versioning_enabled and buckets_have_versioning_resource
+}
