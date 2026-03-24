@@ -1,0 +1,34 @@
+# restrict-aws-regions.sentinel
+#
+# ENFORCEMENT: advisory (warns but does not block)
+# PURPOSE: Warn when resources are being deployed outside approved AWS regions.
+#          Approved regions: us-east-1, us-west-2, eu-west-1, ap-southeast-1
+# NOTE: Advisory enforcement shows up in plan output as a warning — great for demo.
+
+import "tfplan/v2" as tfplan
+import "strings"
+
+approved_regions = [
+  "us-east-1",
+  "us-west-2",
+  "eu-west-1",
+  "ap-southeast-1",
+]
+
+# Get the AWS provider configuration from the plan
+all_providers = filter tfplan.providers as _, provider {
+  provider.name contains "aws"
+}
+
+# Check that any explicitly set regions are in the approved list
+provider_regions_approved = rule {
+  all all_providers as _, provider {
+    # If no region set on provider, defer to workspace variable — warn advisory only
+    provider.config["region"] is null or
+    provider.config["region"].value in approved_regions
+  }
+}
+
+main = rule {
+  provider_regions_approved
+}
